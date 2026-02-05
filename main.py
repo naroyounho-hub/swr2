@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List, Tuple
+import json
 
 import altair as alt
-import folium
 import pandas as pd
 import requests
 import streamlit as st
-from streamlit_folium import st_folium
+import streamlit.components.v1 as components
 
 import osm_backend as ob
 from kakaomap import kakao_keyword_search
@@ -340,94 +340,101 @@ else:
 col_map, col_panel = st.columns([1.35, 1])
 
 with col_map:
-    st.subheader("🗺️ 추천 코스 지도")
-    m = folium.Map(location=[lat, lon], zoom_start=12, tiles="OpenStreetMap")
+    st.subheader("????: ?? ?? + ??/??")
+    kakao_js_key = (
+        st.secrets.get("KAKAO_JS_KEY", "")
+        or st.secrets.get("KAKAO_JAVASCRIPT_KEY", "")
+    )
+    if not kakao_js_key:
+        st.warning("KAKAO_JS_KEY? ?? ????? ??? ? ????.")
+    else:
+        course_coords = row["coords"]
+        end_lat = float(row["end_lat"])
+        end_lon = float(row["end_lon"])
+        places_js = []
+        for p in kakao_food:
+            places_js.append(
+                {
+                    "x": p.get("x"),
+                    "y": p.get("y"),
+                    "place_name": p.get("place_name"),
+                    "address_name": p.get("address_name"),
+                    "place_url": p.get("place_url"),
+                    "category": "food",
+                }
+            )
+        for p in kakao_cafe:
+            places_js.append(
+                {
+                    "x": p.get("x"),
+                    "y": p.get("y"),
+                    "place_name": p.get("place_name"),
+                    "address_name": p.get("address_name"),
+                    "place_url": p.get("place_url"),
+                    "category": "cafe",
+                }
+            )
 
-    # bbox 표시
-    s, w_, n, e = bbox
-    folium.Rectangle(
-        bounds=[[s, w_], [n, e]], color="#0984e3", weight=2, fill=False
-    ).add_to(m)
+        kakao_html = f"""
+<div id="kakao-map" style="height:620px;"></div>
+<script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey={kakao_js_key}"></script>
+<script>
+const course = {json.dumps(course_coords)};
+const places = {json.dumps(places_js)};
 
-    colors = [
-        "#6c5ce7",
-        "#00b894",
-        "#e17055",
-        "#0984e3",
-        "#d63031",
-        "#e84393",
-        "#2d3436",
-        "#fdcb6e",
-    ]
+const mapContainer = document.getElementById('kakao-map');
+const mapOption = {{
+  center: new kakao.maps.LatLng({end_lat}, {end_lon}),
+  level: 6
+}};
+const map = new kakao.maps.Map(mapContainer, mapOption);
 
-    selected_name = row["name"]
+// course polyline
+if (course && course.length > 1) {{
+  const path = course.map(p => new kakao.maps.LatLng(p[0], p[1]));
+  const polyline = new kakao.maps.Polyline({{
+    path: path,
+    strokeWeight: 5,
+    strokeColor: '#0984e3',
+    strokeOpacity: 0.9,
+    strokeStyle: 'solid'
+  }});
+  polyline.setMap(map);
+}}
 
-    for i, r in df_use.iterrows():
-        latlon = r["coords"]
-        color = colors[i % len(colors)]
+// end marker
+const endMarker = new kakao.maps.Marker({{
+  position: new kakao.maps.LatLng({end_lat}, {end_lon})
+}});
+endMarker.setMap(map);
 
-        # 선택 코스는 더 두껍게 강조
-        weight = 8 if r["name"] == selected_name else 6
-        opacity = 0.95 if r["name"] == selected_name else 0.85
+// place markers
+places.forEach(p => {{
+  const lat = parseFloat(p.y);
+  const lon = parseFloat(p.x);
+  if (!lat || !lon) return;
+  const marker = new kakao.maps.Marker({{
+    position: new kakao.maps.LatLng(lat, lon)
+  }});
+  marker.setMap(map);
 
-        folium.PolyLine(
-            latlon,
-            color=color,
-            weight=weight,
-            opacity=opacity,
-            tooltip=f"{i+1}위 {r['name']}",
-        ).add_to(m)
-
-        folium.Marker(
-            location=[r["end_lat"], r["end_lon"]],
-            tooltip=f"{i+1}위 종료점 · {r['difficulty']} · {r['distance_km']}km",
-            icon=folium.Icon(color="green", icon="flag"),
-        ).add_to(m)
-
-    # Kakao markers (food/cafe)
-    if kakao_center:
-        folium.CircleMarker(
-            location=[kakao_center[0], kakao_center[1]],
-            radius=6,
-            color="#2d3436",
-            fill=True,
-            fill_color="#2d3436",
-            tooltip="Kakao 검색 기준점",
-        ).add_to(m)
-
-    for p in kakao_food:
-        try:
-            lat = float(p.get("y", 0))
-            lon = float(p.get("x", 0))
-        except Exception:
-            continue
-        name = p.get("place_name", "")
-        addr = p.get("address_name", "")
-        url = p.get("place_url", "")
-        popup = f"<b>{name}</b><br>{addr}<br><a href='{url}' target='_blank'>Details</a>"
-        folium.Marker(
-            location=[lat, lon],
-            popup=popup,
-            icon=folium.Icon(color="red", icon="cutlery"),
-        ).add_to(m)
-
-    for p in kakao_cafe:
-        try:
-            lat = float(p.get("y", 0))
-            lon = float(p.get("x", 0))
-        except Exception:
-            continue
-        name = p.get("place_name", "")
-        addr = p.get("address_name", "")
-        url = p.get("place_url", "")
-        popup = f"<b>{name}</b><br>{addr}<br><a href='{url}' target='_blank'>Details</a>"
-        folium.Marker(
-            location=[lat, lon],
-            popup=popup,
-            icon=folium.Icon(color="blue", icon="coffee"),
-        ).add_to(m)
-
-    st_folium(m, height=620, width=None)
+  const content = `
+    <div style="padding:6px 8px; font-size:12px;">
+      <div style="font-weight:600;">${p.place_name}</div>
+      <div>${p.address_name || ''}</div>
+      <div><a href="${p.place_url}" target="_blank">??</a></div>
+    </div>
+  `;
+  const infowindow = new kakao.maps.InfoWindow({{
+    content: content
+  }});
+  kakao.maps.event.addListener(marker, 'click', function() {{
+    infowindow.open(map, marker);
+  }});
+}});
+</script>
+"""
+        components.html(kakao_html, height=650)
 
 with col_panel:
     st.subheader(f"🏅 추천 Top {len(df_use)}")
