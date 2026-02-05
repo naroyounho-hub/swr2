@@ -262,6 +262,7 @@ row = df_use[df_use["name"] == selected].iloc[0].to_dict()
 # ====== Kakao places (near selected course end) ======
 kakao_food: List[Dict[str, str]] = []
 kakao_cafe: List[Dict[str, str]] = []
+kakao_center: Tuple[float, float] | None = None
 if "show_kakao" in locals() and show_kakao:
     try:
         kakao_key = (
@@ -273,6 +274,7 @@ if "show_kakao" in locals() and show_kakao:
         else:
             end_lon = float(row["end_lon"])
             end_lat = float(row["end_lat"])
+            kakao_center = (end_lat, end_lon)
             kakao_food = cached_kakao_places(
                 query="맛집",
                 category="FD6",
@@ -383,6 +385,16 @@ with col_map:
         ).add_to(m)
 
     # Kakao markers (food/cafe)
+    if kakao_center:
+        folium.CircleMarker(
+            location=[kakao_center[0], kakao_center[1]],
+            radius=6,
+            color="#2d3436",
+            fill=True,
+            fill_color="#2d3436",
+            tooltip="Kakao 검색 기준점",
+        ).add_to(m)
+
     for p in kakao_food:
         try:
             lat = float(p.get("y", 0))
