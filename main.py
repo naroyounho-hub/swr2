@@ -150,6 +150,7 @@ def cached_kakao_places(
     radius_m: int,
     size: int,
     api_key: str,
+    cache_key: str,
 ) -> List[Dict[str, str]]:
     return kakao_keyword_search(
         query=query,
@@ -176,6 +177,15 @@ with st.sidebar:
             "사용자 지정",
         ],
     )
+
+    prev_preset = st.session_state.get("prev_preset")
+    if prev_preset != preset:
+        st.session_state["prev_preset"] = preset
+        if "selected_course" in st.session_state:
+            del st.session_state["selected_course"]
+        cached_kakao_places.clear()
+        cached_courses.clear()
+
 
     if preset == "사용자 지정":
         lat = st.number_input("중심 위도(lat)", value=37.5665, format="%.6f")
@@ -207,11 +217,9 @@ with st.sidebar:
 
     st.header("5) Kakao 맛집/카페")
     show_kakao = st.checkbox("Kakao 마커 표시", value=True)
-    kakao_radius_m = st.slider("Kakao 검색 반경(m)", 200, 5000, 1200, 100)
+    kakao_radius_m = 800
+    st.caption("Kakao 검색 반경: 800m 고정")
     kakao_size = st.slider("Kakao 결과 수", 5, 20, 10, 1)
-
-   
-
 
     st.divider()
 
@@ -246,6 +254,21 @@ df_use = df.copy()
 if diff_filter != "전체":
     df_use = df_use[df_use["difficulty"] == diff_filter].copy()
 
+
+# ???????? '?? ??'??? ??
+seoul_all = "\uC11C\uC6B8 \uC804\uCCB4"
+BLOCK_PATTERNS = [
+    "Seoul City Trail",
+    "\uC11C\uC6B8\uC2DC\uD2F0\uD2B8\uB808\uC77C",
+    "\uC11C\uC6B8 \uC2DC\uD2F0 \uD2B8\uB808\uC77C",
+    "\uC11C\uC6B8\uB458\uB808\uAE38",
+    "\uC11C\uC6B8 \uB458\uB808\uAE38",
+]
+if preset != seoul_all:
+    mask = df_use["name"].astype(str).str.contains("|".join(BLOCK_PATTERNS), na=False)
+    df_use = df_use[~mask].copy()
+    df = df[~df["name"].astype(str).str.contains("|".join(BLOCK_PATTERNS), na=False)].copy()
+
 if df_use.empty:
     st.info("선택한 난이도에서 후보가 없습니다. 다른 난이도를 선택해 보세요.")
     st.stop()
@@ -255,7 +278,16 @@ df_chart = df_use[["name", "difficulty", "distance_km", "members", "score"]].cop
 
 # ====== (중요) 선택 코스를 지도/차트보다 먼저 고르게 해서,
 #       날씨를 "코스 후보 생성완료"와 "추천 코스 지도" 사이에 표시 가능하게 함 ======
-selected = st.selectbox("상세로 볼 코스 선택", df_use["name"].tolist(), index=0)
+course_names = df_use["name"].tolist()
+if not course_names:
+    st.info("선택한 조건에 맞는 코스가 없습니다.")
+    st.stop()
+
+sel_key = "selected_course"
+if sel_key in st.session_state and st.session_state[sel_key] not in course_names:
+    del st.session_state[sel_key]
+
+selected = st.selectbox("상세로 볼 코스 선택", course_names, index=0, key=sel_key)
 row = df_use[df_use["name"] == selected].iloc[0].to_dict()
 
 # ====== Kakao places (near selected course end) ======
@@ -264,9 +296,8 @@ kakao_cafe: List[Dict[str, str]] = []
 kakao_center: Tuple[float, float] | None = None
 if "show_kakao" in locals() and show_kakao:
     try:
-        kakao_key = (
-            st.secrets.get("KAKAO_REST_API_KEY", "")
-            or st.secrets.get("KAKAO_REST_KEY", "")
+        kakao_key = st.secrets.get("KAKAO_REST_API_KEY", "") or st.secrets.get(
+            "KAKAO_REST_KEY", ""
         )
         if not kakao_key:
             st.info("KAKAO_REST_API_KEY가 없어 Kakao 마커를 표시할 수 없습니다.")
@@ -282,6 +313,7 @@ if "show_kakao" in locals() and show_kakao:
                 radius_m=int(kakao_radius_m),
                 size=int(kakao_size),
                 api_key=kakao_key,
+                cache_key=f"{selected}:{end_lat:.6f},{end_lon:.6f}:{kakao_radius_m}:{kakao_size}",
             )
             kakao_cafe = cached_kakao_places(
                 query="카페",
@@ -291,6 +323,7 @@ if "show_kakao" in locals() and show_kakao:
                 radius_m=int(kakao_radius_m),
                 size=int(kakao_size),
                 api_key=kakao_key,
+                cache_key=f"{selected}:{end_lat:.6f},{end_lon:.6f}:{kakao_radius_m}:{kakao_size}",
             )
     except Exception as e:
         st.warning("Kakao Local 호출에 실패했습니다.")
@@ -339,8 +372,10 @@ else:
 col_map, col_panel = st.columns([1.35, 1])
 
 with col_map:
-    st.subheader("?? ?? + ??/?? (OpenStreetMap)")
-    m = folium.Map(location=[lat, lon], zoom_start=12, tiles="OpenStreetMap")
+    st.subheader("추천코스 + 추천 음식 (OpenStreetMap)")
+    # center map on selected course end
+    map_center = [float(row["end_lat"]), float(row["end_lon"])]
+    m = folium.Map(location=map_center, zoom_start=13, tiles="OpenStreetMap")
 
     # bbox ??
     s, w_, n, e = bbox
