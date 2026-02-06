@@ -255,7 +255,7 @@ if diff_filter != "전체":
     df_use = df_use[df_use["difficulty"] == diff_filter].copy()
 
 
-# ???????? '?? ??'??? ??
+# 서울시티트레일은 '서울 전체'에서만 노출
 seoul_all = "\uC11C\uC6B8 \uC804\uCCB4"
 BLOCK_PATTERNS = [
     "Seoul City Trail",
@@ -372,12 +372,12 @@ else:
 col_map, col_panel = st.columns([1.35, 1])
 
 with col_map:
-    st.subheader("추천코스 + 추천 음식 (OpenStreetMap)")
+    st.subheader("추천 코스 + 맛집/카페 (OpenStreetMap)")
     # center map on selected course end
     map_center = [float(row["end_lat"]), float(row["end_lon"])]
     m = folium.Map(location=map_center, zoom_start=13, tiles="OpenStreetMap")
 
-    # bbox ??
+    # bbox 표시
     s, w_, n, e = bbox
     folium.Rectangle(
         bounds=[[s, w_], [n, e]], color="#0984e3", weight=2, fill=False
@@ -400,7 +400,7 @@ with col_map:
         latlon = r["coords"]
         color = colors[i % len(colors)]
 
-        # ?? ?? ??
+        # 선택 코스 강조
         weight = 8 if r["name"] == selected_name else 6
         opacity = 0.95 if r["name"] == selected_name else 0.85
 
@@ -409,12 +409,12 @@ with col_map:
             color=color,
             weight=weight,
             opacity=opacity,
-            tooltip=f"{i+1}? {r['name']}",
+            tooltip=f"{i+1}번 {r['name']}",
         ).add_to(m)
 
         folium.Marker(
             location=[r["end_lat"], r["end_lon"]],
-            tooltip=f"{i+1}? ??? ? {r['difficulty']} ? {r['distance_km']}km",
+            tooltip=f"{i+1}번 종료점 · {r['difficulty']} · {r['distance_km']}km",
             icon=folium.Icon(color="green", icon="flag"),
         ).add_to(m)
 
@@ -426,7 +426,7 @@ with col_map:
             color="#2d3436",
             fill=True,
             fill_color="#2d3436",
-            tooltip="Kakao ?? ???",
+            tooltip="Kakao 검색 기준점",
         ).add_to(m)
 
     for p in kakao_food:
@@ -438,7 +438,7 @@ with col_map:
         name = p.get("place_name", "")
         addr = p.get("address_name", "")
         url = p.get("place_url", "")
-        popup = f"<b>{name}</b><br>{addr}<br><a href='{url}' target='_blank'>??</a>"
+        popup = f"<b>{name}</b><br>{addr}<br><a href='{url}' target='_blank'>상세</a>"
         folium.Marker(
             location=[lat_p, lon_p],
             popup=popup,
@@ -454,7 +454,7 @@ with col_map:
         name = p.get("place_name", "")
         addr = p.get("address_name", "")
         url = p.get("place_url", "")
-        popup = f"<b>{name}</b><br>{addr}<br><a href='{url}' target='_blank'>??</a>"
+        popup = f"<b>{name}</b><br>{addr}<br><a href='{url}' target='_blank'>상세</a>"
         folium.Marker(
             location=[lat_p, lon_p],
             popup=popup,
